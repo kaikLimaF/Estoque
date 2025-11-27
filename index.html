@@ -1,0 +1,877 @@
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contagem Rápida de Estoque - Excel Local</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+
+    <style>
+        .toast {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .pulse-dot {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* Mobile polish */
+        :root {
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+        }
+
+        #toastContainer {
+            max-width: min(92vw, 420px);
+        }
+
+        .bottom-safe {
+            padding-bottom: calc(var(--safe-bottom) + 0.5rem);
+        }
+
+        /* Improve tap targets on mobile */
+        @media (max-width: 640px) {
+            #toastContainer {
+                left: 1rem;
+                right: 1rem;
+                top: 1rem;
+            }
+
+            .toast {
+                width: 100%;
+                justify-content: space-between;
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+    <!-- Toast Container -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-40 p-4">
+        <div class="bg-white rounded-xl p-6 sm:p-8 flex flex-col items-center shadow-2xl w-full max-w-sm">
+            <div class="relative">
+                <div class="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-600"></div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                        </path>
+                    </svg>
+                </div>
+            </div>
+            <p class="text-gray-700 font-semibold mt-4" id="loadingText">Sincronizando...</p>
+            <p class="text-gray-500 text-sm mt-1" id="loadingSubtext">Aguarde um momento</p>
+        </div>
+    </div>
+
+    <!-- Modal de Edição -->
+    <div id="editModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-30 p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md fade-in max-h-[85vh] overflow-hidden">
+            <div class="p-4 sm:p-6 border-b">
+                <h3 class="text-xl font-bold text-gray-800" id="editModalTitle">Editar</h3>
+            </div>
+            <div class="p-4 sm:p-6 overflow-y-auto" id="editModalContent">
+                <!-- Content will be injected here -->
+            </div>
+            <div class="p-4 sm:p-6 border-t bg-gray-50 rounded-b-xl flex gap-3 justify-end">
+                <button onclick="closeModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg transition">
+                    Cancelar
+                </button>
+                <button onclick="saveModal()" id="editModalSave"
+                    class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition">
+                    Salvar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration Screen -->
+    <div id="configScreen" class="container mx-auto px-4 py-6 max-w-3xl">
+        <!-- Configuration Card -->
+        <div class="bg-white rounded-xl shadow-lg p-5 mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <div>
+                    <h3 class="text-xl font-bold text-gray-800">Configuração</h3>
+                    <p class="text-gray-600 text-sm">Escolha a fonte dos seus dados.</p>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="border-b border-gray-200 mb-6">
+                <nav class="-mb-px flex space-x-8">
+                    <button id="tabSheets" onclick="setDataMode('sheets')"
+                        class="pb-4 px-1 border-b-2 border-indigo-600 font-bold text-indigo-600 text-sm flex items-center gap-2 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.5M5.5 19H7M17 5v14M17 19h2a2 2 0 012 2h-2m-2-2H5.5a2 2 0 01-2-2V5.5a2 2 0 012-2h11.5">
+                            </path>
+                        </svg>
+                        Google Sheets
+                    </button>
+                    <button id="tabExcel" onclick="setDataMode('excel')"
+                        class="pb-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium text-sm flex items-center gap-2 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 10v6m0 0l-3-3m3 3l3-3"></path>
+                        </svg>
+                        Excel / CSV (Offline)
+                    </button>
+                    <button id="btnCarregarProdutos" onclick="carregarDadosDoProxy()"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" >
+                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 10v6m0 0l-3-3m3 3l3-3"></path>
+                        </svg>
+                        Carregar Produtos do Banco de Dados
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Sheets Panel (Google Apps Script) -->
+            <div id="sheetsPanel" class="fade-in">
+                <div class="p-4 bg-indigo-50 border border-indigo-200 rounded-xl mb-4">
+                    <p class="text-indigo-900 text-sm"><strong>Google Sheets</strong>: Sincronização online em tempo
+                        real. As alterações são salvas diretamente na planilha.</p>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">URL do Web App</label>
+                        <input id="webAppUrl" type="text" placeholder="https://script.google.com/macros/s/..."
+                            class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm" />
+                        <p class="text-xs text-gray-500 mt-2">Dica: obtenha a URL ao publicar o Apps Script como Web
+                            App.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Nome da aba (opcional)</label>
+                        <input id="sheetName" type="text" placeholder="Estoque"
+                            class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm" />
+                        <p class="text-xs text-gray-500 mt-2">Dica: se não informar, usará a primeira aba da planilha.
+                        </p>
+                    </div>
+
+                    <div class="flex gap-3">
+                        <button onclick="testConnection()"
+                            class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            Testar Conexão
+                        </button>
+                        <button onclick="saveAndConnect()"
+                            class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                            Conectar
+                        </button>
+                    </div>
+
+                    <div id="connectionStatus"></div>
+
+                    <!-- Troubleshooting Section -->
+                    <div class="mt-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+                        <h4 class="font-bold text-indigo-800 mb-3 flex items-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            Problemas de Conexão?
+                        </h4>
+                        <ul class="text-sm text-indigo-700 space-y-2">
+                            <li>• <strong>Erro "Failed to fetch":</strong> Verifique se o Web App foi publicado para
+                                "Qualquer pessoa"</li>
+                            <li>• <strong>Resposta inválida:</strong> Crie uma NOVA implantação após salvar o script
+                            </li>
+                            <li>• <strong>Permissões:</strong> Autorize todas as permissões solicitadas no Apps Script
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Excel / CSV Panel -->
+            <div id="excelPanel" class="hidden fade-in">
+                <div class="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-4">
+                    <p class="text-amber-900 text-sm">
+                        <strong>Modo Offline:</strong> Importe um arquivo Excel (.xlsx) ou CSV, faça a contagem no
+                        navegador e exporte o resultado.
+                    </p>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Importar arquivo</label>
+                        <input id="excelFile" type="file" accept=".xlsx,.xls,.csv,text/csv"
+                            class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg bg-white" />
+                        <p class="text-xs text-gray-500 mt-2">Formatos suportados: .xlsx, .xls, .csv</p>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <button onclick="importExcelFile()"
+                            class="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                            Importar Arquivo
+                        </button>
+                        <button onclick="exportExcelFile()"
+                            class="flex-1 bg-gray-900 hover:bg-black text-white px-6 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                            </svg>
+                            Exportar Excel (.xlsx)
+                        </button>
+                    </div>
+
+                    <div class="p-4 bg-gray-50 rounded-lg border border-gray-200 mt-4">
+                        <h4 class="font-bold text-gray-700 mb-2 text-sm">Como usar o modo offline:</h4>
+                        <ol class="text-sm text-gray-600 list-decimal ml-4 space-y-1">
+                            <li>Importe sua planilha (Excel ou CSV)</li>
+                            <li>Faça a contagem no app (os dados ficam no navegador)</li>
+                            <li>Clique em <strong>Exportar CSV Atualizado</strong></li>
+                            <li>Abra o CSV gerado no Excel para ver os saldos atualizados</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-gradient-to-r from-amber-600 to-orange-700 text-white rounded-2xl shadow-xl p-8 mb-6">
+            <div class="flex items-center gap-4 mb-4">
+                <div class="bg-white/20 rounded-full p-3">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.5M5.5 19H7M17 5v14M17 19h2a2 2 0 012 2h-2m-2-2H5.5a2 2 0 01-2-2V5.5a2 2 0 012-2h11.5">
+                        </path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-3xl font-bold">Contagem de Estoque</h1>
+                    <p class="text-amber-100">Importe seu CSV do Excel e comece a contagem</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="sheetsInstructions">
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <span
+                        class="bg-blue-100 text-blue-600 rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold">1</span>
+                    Crie a Planilha no Google Sheets
+                </h3>
+
+                <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                    <p class="text-gray-700 mb-3">Sua planilha deve ter <strong>1 aba</strong> com as colunas abaixo
+                        (cabeçalho na linha 1):</p>
+
+                    <div class="grid md:grid-cols-1 gap-4">
+                        <div class="bg-white border-2 border-amber-200 rounded-lg p-4">
+                            <h4 class="font-bold text-amber-700 mb-2">📦 CSV do Excel</h4>
+                            <p class="text-gray-600 text-sm mb-3">Exportar do Excel como <strong>CSV UTF-8</strong> e
+                                importar aqui. O app lê os cabeçalhos abaixo para organizar os grupos.</p>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-[900px] w-full text-sm">
+                                    <thead class="bg-amber-50">
+                                        <tr>
+                                            <th class="px-2 py-1 text-left">Codigo</th>
+                                            <th class="px-2 py-1 text-left">Descricao</th>
+                                            <th class="px-2 py-1 text-left">Tipo Substrato</th>
+                                            <th class="px-2 py-1 text-left">Origem</th>
+                                            <th class="px-2 py-1 text-left">Grupo</th>
+                                            <th class="px-2 py-1 text-left">Codigo Referencia</th>
+                                            <th class="px-2 py-1 text-left">Desativado</th>
+                                            <th class="px-2 py-1 text-left">Saldo Fisico</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr class="border-t text-gray-500">
+                                            <td class="px-2 py-1">123</td>
+                                            <td class="px-2 py-1">Parafuso 8mm</td>
+                                            <td class="px-2 py-1">Aço</td>
+                                            <td class="px-2 py-1">Nacional</td>
+                                            <td class="px-2 py-1">Ferragens</td>
+                                            <td class="px-2 py-1">REF-123</td>
+                                            <td class="px-2 py-1">Não</td>
+                                            <td class="px-2 py-1">10,5</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="mt-3 text-xs text-gray-600">
+                                <p><strong>Dicas:</strong></p>
+                                <ul class="list-disc ml-5 space-y-1">
+                                    <li>Use <strong>Excel → Salvar Como → CSV UTF-8</strong> para exportar.</li>
+                                    <li>O app usa <strong>Grupo</strong> para organizar os itens.</li>
+                                    <li>Quando terminar a contagem, use <strong>Exportar CSV Atualizado</strong>.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <span
+                        class="bg-blue-100 text-blue-600 rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold">2</span>
+                    Adicione o Script no Google Sheets
+                </h3>
+
+                <div class="space-y-4">
+                    <p class="text-gray-600">No Excel Online, vá em <strong>Dados → Office Scripts → Novo
+                            Script</strong> e cole este código:</p>
+
+                    <div class="relative">
+                        <pre id="scriptCode"
+                            class="bg-gray-900 text-green-400 p-4 rounded-lg text-xs overflow-x-auto max-h-80 overflow-y-auto"><code>/**
+ * Contagem Rápida de Estoque - Office Script para Excel Online
+ * 
+ * Como usar:
+ * 1. No Excel Online: Dados > Office Scripts > Novo Script
+ * 2. Cole este código e salve
+ * 3. Crie um Power Automate Flow com gatilho HTTP POST
+ * 4. No Flow, use a ação "Excel Online (Business) > Run script"
+ * 5. No campo "Script", escolha este script
+ * 6. Nos parâmetros, envie JSON com { "action": "...", ... }
+ * 7. O Flow retornará JSON com os resultados
+ * 
+ * Colunas esperadas (linha 1): Codigo, Descricao, Tipo Substrato, Origem, Grupo, Codigo Referencia, Desativado, Saldo Fisico
+ */
+
+function main(workbook: ExcelScript.Workbook, parameters?: { action?: string; sheetName?: string; updates?: string; code?: string; quantity?: number }): { success: boolean; error?: string; groups?: Group[]; products?: Product[]; updated?: any[]; errors?: any[]; sheetName?: string } {
+  try {
+    // Determinar a aba
+    let worksheet: ExcelScript.Worksheet;
+    if (parameters?.sheetName) {
+      worksheet = workbook.getWorksheet(parameters.sheetName);
+      if (!worksheet) {
+        return { success: false, error: "Aba não encontrada: " + parameters.sheetName };
+      }
+    } else {
+      worksheet = workbook.getWorksheets()[0];
+    }
+
+    const action = parameters?.action || "";
+    let result: any;
+
+    switch (action) {
+      case "getAll":
+        result = getAllData(worksheet);
+        break;
+
+      case "updateBatch":
+        const updatesStr = parameters?.updates || "[]";
+        const updates: Array<{ code: string; quantity: number }> = JSON.parse(updatesStr);
+        result = updateBatch(worksheet, updates);
+        break;
+
+      case "updateSingle":
+        const code = parameters?.code || "";
+        const quantity = Number(parameters?.quantity || 0);
+        result = updateSingle(worksheet, code, quantity);
+        break;
+
+      default:
+        return { success: false, error: "Ação não reconhecida: " + action };
+    }
+
+    return result;
+  } catch (error) {
+    return { success: false, error: "Erro no script: " + (error as Error).message };
+  }
+}
+
+// Tipos
+interface Group {
+  id: number;
+  name: string;
+}
+
+interface Product {
+  id: string;
+  code: string;
+  groupId: number;
+  groupName: string;
+  name: string;
+  quantity: number;
+  row: number;
+}
+
+// Funções auxiliares
+function normalizeHeader(v: string): string {
+  return (v || "")
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function isDesativado(v: any): boolean {
+  const s = String(v || "").trim().toLowerCase();
+  if (!s) return false;
+  return ["1", "true", "sim", "s", "yes", "y", "x"].includes(s);
+}
+
+function parseNum(v: any): number {
+  if (v === null || v === undefined || v === "") return 0;
+  if (typeof v === "number") return isNaN(v) ? 0 : v;
+  const s = String(v).trim().replace(",", ".");
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+function getAllData(worksheet: ExcelScript.Worksheet): { success: boolean; groups: Group[]; products: Product[]; sheetName: string } {
+  const usedRange = worksheet.getUsedRange();
+  if (!usedRange) {
+    return { success: true, groups: [], products: [], sheetName: worksheet.getName() };
+  }
+
+  const values = usedRange.getValues();
+
+  // Cabeçalho (linha 0)
+  const headerRow = values[0];
+  const headerMap: { [key: string]: number } = {};
+  headerRow.forEach((h: any, idx: number) => {
+    const key = normalizeHeader(String(h));
+    if (key) headerMap[key] = idx;
+  });
+
+  // Encontrar colunas
+  const colCodigo = headerMap["codigo"];
+  const colDescricao = headerMap["descricao"];
+  const colGrupo = headerMap["grupo"];
+  const colDesativado = headerMap["desativado"];
+  const colSaldoFisico = headerMap["saldo fisico"];
+
+  const missing: string[] = [];
+  if (colCodigo === undefined) missing.push("Codigo");
+  if (colDescricao === undefined) missing.push("Descricao");
+  if (colGrupo === undefined) missing.push("Grupo");
+  if (colSaldoFisico === undefined) missing.push("Saldo Fisico");
+  if (missing.length) {
+    throw new Error("Colunas não encontradas: " + missing.join(", "));
+  }
+
+  const groups: Group[] = [];
+  const products: Product[] = [];
+  const groupMap: { [key: string]: number } = {};
+  let groupIdSeq = 1;
+
+  // Dados (a partir da linha 1)
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const codigo = row[colCodigo];
+    if (codigo === "" || codigo === null || codigo === undefined) continue;
+
+    const descricao = String(row[colDescricao] || "").trim();
+    let grupo = String(row[colGrupo] || "").trim();
+    const desativado = (colDesativado !== undefined) ? isDesativado(row[colDesativado]) : false;
+
+    if (!grupo) grupo = "Sem Grupo";
+    if (desativado) continue;
+
+    if (!groupMap[grupo]) {
+      groupMap[grupo] = groupIdSeq++;
+      groups.push({ id: groupMap[grupo], name: grupo });
+    }
+
+    const saldo = parseNum(row[colSaldoFisico]);
+
+    products.push({
+      id: String(codigo),
+      code: String(codigo),
+      groupId: groupMap[grupo],
+      groupName: grupo,
+      name: descricao || String(codigo),
+      quantity: saldo,
+      row: i + 1
+    });
+  }
+
+  groups.sort((a, b) => a.name.localeCompare(b.name));
+
+  return {
+    success: true,
+    groups: groups,
+    products: products,
+    sheetName: worksheet.getName()
+  };
+}
+
+function updateSingle(worksheet: ExcelScript.Worksheet, code: string, quantity: number): { success: boolean; code?: string; quantity?: number; row?: number; error?: string } {
+  const usedRange = worksheet.getUsedRange();
+  if (!usedRange) {
+    return { success: false, error: "Planilha vazia" };
+  }
+
+  const values = usedRange.getValues();
+
+  // Cabeçalho
+  const headerRow = values[0];
+  const headerMap: { [key: string]: number } = {};
+  headerRow.forEach((h: any, idx: number) => {
+    const key = normalizeHeader(String(h));
+    if (key) headerMap[key] = idx;
+  });
+
+  const colCodigo = headerMap["codigo"];
+  const colSaldoFisico = headerMap["saldo fisico"];
+
+  if (colCodigo === undefined || colSaldoFisico === undefined) {
+    return { success: false, error: "Colunas Codigo ou Saldo Fisico não encontradas" };
+  }
+
+  // Procurar código
+  for (let i = 1; i < values.length; i++) {
+    const rowCode = String(values[i][colCodigo]);
+    if (rowCode === String(code)) {
+      // Atualizar
+      const rowNumber = i + 1;
+      worksheet.getRange(`R${rowNumber}C${colSaldoFisico + 1}`, ExcelScript.ReferenceStyle.R1C1).setValue(quantity);
+      return {
+        success: true,
+        code: code,
+        quantity: quantity,
+        row: rowNumber
+      };
+    }
+  }
+
+  return { success: false, error: "Código não encontrado: " + code };
+}
+
+function updateBatch(worksheet: ExcelScript.Worksheet, updates: Array<{ code: string; quantity: number }>): { success: boolean; updated: any[]; errors: any[]; sheetName: string } {
+  const usedRange = worksheet.getUsedRange();
+  if (!usedRange) {
+    return { success: false, updated: [], errors: [], sheetName: worksheet.getName() };
+  }
+
+  const values = usedRange.getValues();
+
+  // Cabeçalho
+  const headerRow = values[0];
+  const headerMap: { [key: string]: number } = {};
+  headerRow.forEach((h: any, idx: number) => {
+    const key = normalizeHeader(String(h));
+    if (key) headerMap[key] = idx;
+  });
+
+  const colCodigo = headerMap["codigo"];
+  const colSaldoFisico = headerMap["saldo fisico"];
+
+  if (colCodigo === undefined || colSaldoFisico === undefined) {
+    return { success: false, updated: [], errors: [], sheetName: worksheet.getName() };
+  }
+
+  // Índice código -> linha
+  const codeIndex: { [code: string]: number } = {};
+  for (let i = 1; i < values.length; i++) {
+    const codigo = values[i][colCodigo];
+    if (codigo !== "" && codigo !== null && codigo !== undefined) {
+      codeIndex[String(codigo)] = i;
+    }
+  }
+
+  const updated: any[] = [];
+  const errors: any[] = [];
+
+  // Atualizar célula a célula
+  updates.forEach(upd => {
+    const code = String(upd.code);
+    const qty = parseNum(upd.quantity);
+    const rowIdx = codeIndex[code];
+
+    if (rowIdx === undefined) {
+      errors.push({ code: code, error: "Código não encontrado" });
+      return;
+    }
+
+    try {
+      const rowNumber = rowIdx + 1;
+      worksheet.getRange(`R${rowNumber}C${colSaldoFisico + 1}`, ExcelScript.ReferenceStyle.R1C1).setValue(qty);
+      updated.push({ code: code, quantity: qty, row: rowNumber });
+    } catch (e) {
+      errors.push({ code: code, error: (e as Error).message });
+    }
+  });
+
+  return {
+    success: true,
+    updated: updated,
+    errors: errors,
+    sheetName: worksheet.getName()
+  };
+}</code></pre>
+                        <button onclick="copyScript()"
+                            class="absolute top-2 right-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition flex items-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3">
+                                </path>
+                            </svg>
+                            Copiar
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    <span
+                        class="bg-blue-100 text-blue-600 rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold">3</span>
+                    Publique como Web App
+                </h3>
+
+                <ol class="space-y-3 text-gray-600">
+                    <li class="flex items-start gap-3">
+                        <span
+                            class="bg-gray-200 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold shrink-0">1</span>
+                        <span>No Apps Script, clique em <strong>"Implantar" → "Nova implantação"</strong></span>
+                    </li>
+                    <li class="flex items-start gap-3">
+                        <span
+                            class="bg-gray-200 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold shrink-0">2</span>
+                        <span>Clique no ícone de engrenagem e selecione <strong>"App da Web"</strong></span>
+                    </li>
+                    <li class="flex items-start gap-3">
+                        <span
+                            class="bg-gray-200 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold shrink-0">3</span>
+                        <span>Executar como: <strong>"Eu"</strong></span>
+                    </li>
+                    <li class="flex items-start gap-3">
+                        <span
+                            class="bg-gray-200 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold shrink-0">4</span>
+                        <span>Quem tem acesso: <strong>"Qualquer pessoa"</strong></span>
+                    </li>
+                    <li class="flex items-start gap-3">
+                        <span
+                            class="bg-gray-200 rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold shrink-0">5</span>
+                        <span>Clique em <strong>"Implantar"</strong> e copie a URL gerada</span>
+                    </li>
+                </ol>
+
+                <div class="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p class="text-yellow-800 text-sm">
+                        <strong>⚠️ Importante:</strong> Após qualquer alteração no script, você precisa criar uma
+                        <strong>nova implantação</strong> para as mudanças terem efeito.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+
+    <!-- Main Screen - Group Selection -->
+    <div id="groupScreen" class="hidden container mx-auto px-3 sm:px-4 py-4 sm:py-6 max-w-7xl">
+        <div
+            class="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-2xl shadow-xl p-4 sm:p-6 mb-4 sm:mb-6">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+                <div class="flex items-center gap-4">
+                    <div class="bg-white/20 rounded-full p-3">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01">
+                            </path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold">Contagem de Estoque</h1>
+                        <p class="text-blue-100 text-sm">Selecione um grupo para contar</p>
+                    </div>
+                </div>
+                <div class="flex gap-2 flex-wrap">
+                    <button id="mainSyncBtn" onclick="handleMainAction()"
+                        class="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2">
+                        <!-- Icon will be set by JS -->
+                        <svg id="syncIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                            </path>
+                        </svg>
+                        <span id="syncText">Sincronizar</span>
+                    </button>
+                    <button id="exportBtn" onclick="exportAsXlsx()"
+                        class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 hidden">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                        Exportar Excel
+                    </button>
+                    <button onclick="disconnect()"
+                        class="bg-red-500/80 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-semibold transition">
+                        Desconectar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection Status -->
+        <div
+            class="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex items-center justify-between flex-wrap gap-3">
+            <div class="flex items-center gap-3">
+                <div class="w-3 h-3 bg-green-500 rounded-full pulse-dot"></div>
+                <span class="text-gray-700 font-medium">Conectado ao Google Sheets</span>
+            </div>
+            <span class="text-gray-500 text-sm" id="lastSync">-</span>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="mb-6">
+            <div class="relative">
+                <input type="text" id="groupSearch" placeholder="🔍 Pesquisar grupos..." oninput="filterGroups()"
+                    class="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pl-12">
+                <div class="absolute inset-y-0 left-0 pl-4 flex items-center">
+                    <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-xl shadow p-4 border-l-4 border-blue-500">
+                <p class="text-gray-500 text-sm mb-1">Grupos</p>
+                <p class="text-3xl font-bold text-blue-600" id="totalGroups">0</p>
+            </div>
+            <div class="bg-white rounded-xl shadow p-4 border-l-4 border-green-500">
+                <p class="text-gray-500 text-sm mb-1">Produtos</p>
+                <p class="text-3xl font-bold text-green-600" id="totalProducts">0</p>
+            </div>
+            <div class="bg-white rounded-xl shadow p-4 border-l-4 border-purple-500">
+                <p class="text-gray-500 text-sm mb-1">Itens em Estoque</p>
+                <p class="text-3xl font-bold text-purple-600" id="totalItems">0</p>
+            </div>
+            <div class="bg-white rounded-xl shadow p-4 border-l-4 border-orange-500">
+                <p class="text-gray-500 text-sm mb-1">Última Contagem</p>
+                <p class="text-lg font-bold text-orange-600" id="lastCount">-</p>
+            </div>
+        </div>
+
+        <!-- Group Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="groupCards">
+            <!-- Groups will be rendered here -->
+        </div>
+    </div>
+
+    <!-- Counting Screen -->
+    <div id="countingScreen" class="hidden container mx-auto px-3 sm:px-4 py-4 sm:py-6 max-w-7xl">
+        <div
+            class="bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-2xl shadow-xl p-4 sm:p-6 mb-4 sm:mb-6">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+                <div class="flex items-center gap-4">
+                    <button onclick="backToGroups()" class="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7">
+                            </path>
+                        </svg>
+                    </button>
+                    <div>
+                        <h2 class="text-2xl font-bold" id="currentGroupName">Grupo</h2>
+                        <p class="text-green-100 text-sm">Atualize as quantidades da contagem física</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <p class="text-green-100 text-sm">Produtos alterados</p>
+                    <p class="text-3xl font-bold" id="changedCount">0</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions Bar -->
+        <div class="flex flex-wrap gap-3 mb-6">
+            <div class="flex-1">
+                <input type="text" id="productSearch" placeholder="🔍 Buscar produto..." oninput="filterProducts()"
+                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500">
+            </div>
+            <button onclick="confirmZeroStock()"
+                class="bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-xl font-semibold transition flex items-center gap-2 whitespace-nowrap">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
+                    </path>
+                </svg>
+                Zerar Estoque
+            </button>
+        </div>
+
+        <!-- Products Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 pb-32 sm:pb-28" id="productsGrid">
+            <!-- Products will be rendered here -->
+        </div>
+
+        <!-- Save Button -->
+        <div class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t shadow-lg p-3 sm:p-4 bottom-safe">
+            <div
+                class="container mx-auto max-w-7xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                <div class="text-sm text-gray-600">
+                    <span id="pendingChanges">0</span> alterações pendentes
+                </div>
+                <button onclick="saveAllChanges()" id="saveBtn"
+                    class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-8 py-3 rounded-xl font-bold text-lg flex items-center gap-2 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12">
+                        </path>
+                    </svg>
+                    Salvar
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="script.js"></script>
+</body>
